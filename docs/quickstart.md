@@ -23,7 +23,7 @@ git --version         # Need 2.30+
 
 ---
 
-## Quick Installation (5 Steps)
+## Quick Installation (4 Steps)
 
 ### Step 1: Clone & Enter Directory
 
@@ -32,52 +32,41 @@ git clone https://github.com/w7-mgfcode/Mannos-ANSIBLE_MCP-solution.git
 cd Mannos-ANSIBLE_MCP-solution
 ```
 
-### Step 2: Create Minimal Environment
+### Step 2: Run Install Script
 
 ```bash
-# Create .env with required settings
-cat > .env << 'EOF'
-JWT_SECRET=$(openssl rand -base64 32)
-POSTGRES_PASSWORD=quickstart123
-VAULT_ROOT_TOKEN=quickstart
-GRAFANA_ADMIN_PASSWORD=admin
-AI_PROVIDER=openai
-OPENAI_API_KEY=your-key-here
-EOF
-
-# Generate JWT secret (cross-platform: works on macOS and Linux)
-JWT_SECRET=$(openssl rand -base64 32)
-sed "s|JWT_SECRET=.*|JWT_SECRET=$JWT_SECRET|" .env > .env.tmp && mv .env.tmp .env
+# Make scripts executable and run installer
+chmod +x scripts/*.sh
+./scripts/manage.sh install minimal
 ```
 
-**Note:** Replace `your-key-here` with your actual OpenAI API key. Skip AI_PROVIDER settings if you don't have one - the server will use templates instead.
+This will:
+- Check prerequisites (Docker, Docker Compose)
+- Create required directories
+- Generate secure credentials in `.env`
+- Pull and build Docker images
+- Start core services
+- Wait for health checks
 
-### Step 3: Create Required Directories
+### Step 3: Add AI API Key
 
 ```bash
-mkdir -p playbooks inventory logs
-echo "[local]
-localhost ansible_connection=local" > inventory/hosts
+# Edit .env to add your API key
+nano .env
+# Find and set: OPENAI_API_KEY=sk-your-key-here
+
+# Restart to apply
+./scripts/manage.sh restart ansible-mcp
 ```
 
-### Step 4: Start Core Services Only
+**Note:** Skip this step if you don't have an API key - the server will still work with templates.
+
+### Step 4: Verify It Works
 
 ```bash
-# Start minimum services (faster startup)
-docker compose up -d ansible-mcp redis vault postgres
+# Check all services are healthy
+./scripts/manage.sh health
 
-# Wait for startup (about 30 seconds)
-sleep 30
-
-# Check status
-docker compose ps
-```
-
-**Expected:** All services show "Up" status
-
-### Step 5: Verify It Works
-
-```bash
 # Generate a test playbook
 curl -X POST http://localhost:3000/execute \
   -H "Content-Type: application/json" \
@@ -92,6 +81,14 @@ curl -X POST http://localhost:3000/execute \
 **Expected output:**
 ```
 "/tmp/ansible-mcp/playbook_1700000000000.yml"
+```
+
+### Upgrade to Standard Installation
+
+Want Web UI and monitoring? Upgrade easily:
+
+```bash
+./scripts/manage.sh install standard
 ```
 
 ---
