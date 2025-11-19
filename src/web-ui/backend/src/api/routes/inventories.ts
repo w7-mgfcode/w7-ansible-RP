@@ -37,7 +37,7 @@ function validateFilePath(filePath: string, baseDir: string): void {
 function parseInventoryContent(content: string): { hostCount: number; groupCount: number; groups: string[] } {
   const lines = content.split('\n');
   const hosts = new Set<string>();
-  const groups: string[] = [];
+  const groups = new Set<string>();
   let currentGroup = '';
 
   for (const line of lines) {
@@ -48,20 +48,21 @@ function parseInventoryContent(content: string): { hostCount: number; groupCount
       continue;
     }
 
-    // Check for group header
-    const groupMatch = trimmed.match(/^\[([^\]:]+)\]/);
+    // Check for group header - capture full content including possible suffixes
+    const groupMatch = trimmed.match(/^\[([^\]]+)\]/);
     if (groupMatch) {
-      const groupName = groupMatch[1];
-      // Skip special groups like :vars, :children
-      if (!groupName.includes(':')) {
-        groups.push(groupName);
+      const groupExpr = groupMatch[1]; // e.g. "webservers" or "all:children"
+      const [groupName, suffix] = groupExpr.split(':', 2);
+      // Skip special sections like :vars, :children
+      if (!suffix) {
+        groups.add(groupName);
         currentGroup = groupName;
       }
       continue;
     }
 
     // It's a host line
-    if (currentGroup || !groups.length) {
+    if (currentGroup || groups.size === 0) {
       const hostName = trimmed.split(/\s+/)[0];
       if (hostName && !hostName.includes('=')) {
         hosts.add(hostName);
@@ -69,10 +70,11 @@ function parseInventoryContent(content: string): { hostCount: number; groupCount
     }
   }
 
+  const groupsArray = Array.from(groups);
   return {
     hostCount: hosts.size,
-    groupCount: groups.length,
-    groups
+    groupCount: groupsArray.length,
+    groups: groupsArray
   };
 }
 
@@ -318,10 +320,11 @@ router.get('/:id/hosts', optionalAuth, async (req: AuthenticatedRequest, res: Re
         continue;
       }
 
-      const groupMatch = trimmed.match(/^\[([^\]:]+)\]/);
+      const groupMatch = trimmed.match(/^\[([^\]]+)\]/);
       if (groupMatch) {
-        const groupName = groupMatch[1];
-        if (!groupName.includes(':')) {
+        const groupExpr = groupMatch[1];
+        const [groupName, suffix] = groupExpr.split(':', 2);
+        if (!suffix) {
           currentGroup = groupName;
         }
         continue;
