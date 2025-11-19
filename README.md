@@ -145,7 +145,9 @@ Unified CLI for all deployment operations:
 ./scripts/manage.sh update --rebuild --backup
 
 # Service control
-./scripts/manage.sh start/stop/restart [services]
+./scripts/manage.sh start [services]
+./scripts/manage.sh stop [services]
+./scripts/manage.sh restart [services]
 ./scripts/manage.sh status
 ./scripts/manage.sh logs [service] -f
 
