@@ -10,6 +10,9 @@ import { AppError } from '../middleware/errorHandler.js';
 const router = Router();
 const playbookRepository = () => AppDataSource.getRepository(Playbook);
 
+// AI Generator service URL
+const AI_GENERATOR_URL = process.env.AI_GENERATOR_URL || 'http://ai-generator:8000';
+
 // Working directory for playbooks
 const PLAYBOOK_DIR = process.env.PLAYBOOK_DIR || '/tmp/ansible-mcp/playbooks';
 
@@ -225,24 +228,88 @@ router.delete('/:id', authMiddleware, userOrAdmin, async (req: AuthenticatedRequ
   }
 });
 
-// POST /api/playbooks/generate - Generate playbook from prompt
+// POST /api/playbooks/generate - Generate playbook from prompt using AI
 router.post('/generate', authMiddleware, userOrAdmin, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
-    const { prompt, template, context } = req.body;
+    const { prompt, template, context, provider, model } = req.body;
 
     if (!prompt) {
       throw new AppError('Prompt is required', 400);
     }
 
-    // This will be integrated with MCP server's generate_playbook tool
-    // For now, return a placeholder
+    // Call AI Generator service
+    const generateUrl = `${AI_GENERATOR_URL}/generate`;
+
+    const generateRequest = {
+      prompt,
+      template: template || undefined,
+      target_hosts: context?.target_hosts || 'all',
+      environment: context?.environment || 'production',
+      tags: context?.tags || [],
+      provider: provider || process.env.AI_PROVIDER || 'gemini',
+      model: model || process.env.AI_MODEL || undefined,
+      use_ai: true
+    };
+
+    // Make HTTP request to AI Generator
+    const response = await fetch(generateUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(generateRequest),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new AppError(`AI Generator error: ${errorText}`, response.status);
+    }
+
+    const result = await response.json();
+
+    if (!result.success) {
+      throw new AppError(result.error || 'Generation failed', 500);
+    }
+
+    // Save the generated playbook to database
+    await ensureDir(PLAYBOOK_DIR);
+
+    const filename = `playbook_${Date.now()}_${uuidv4().slice(0, 8)}.yml`;
+    const filePath = path.join(PLAYBOOK_DIR, filename);
+
+    // Validate path
+    const resolvedPlaybookDir = path.resolve(PLAYBOOK_DIR);
+    const resolvedFilePath = path.resolve(filePath);
+    if (!resolvedFilePath.startsWith(resolvedPlaybookDir + path.sep)) {
+      throw new AppError('Invalid file path', 400);
+    }
+
+    // Write to file
+    await fs.writeFile(filePath, result.playbook, 'utf-8');
+
+    // Generate name from prompt
+    const playbookName = `Generated: ${prompt.substring(0, 50)}${prompt.length > 50 ? '...' : ''}`;
+
+    // Create database entry
+    const playbook = playbookRepository().create({
+      name: playbookName,
+      description: `Generated from prompt: ${prompt}`,
+      content: result.playbook,
+      filePath,
+      prompt,
+      template: template || null,
+      tags: context?.tags || [],
+      status: PlaybookStatus.DRAFT,
+      createdById: req.user!.userId
+    });
+
+    await playbookRepository().save(playbook);
+
     res.json({
       success: true,
-      message: 'Generation request received',
-      jobId: uuidv4(),
-      prompt,
-      template,
-      context
+      playbook,
+      playbookType: result.playbook_type,
+      message: 'Playbook generated successfully'
     });
   } catch (error) {
     next(error);
