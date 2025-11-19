@@ -158,6 +158,12 @@ router.post('/', authMiddleware, userOrAdmin, async (req: AuthenticatedRequest, 
       throw new AppError('Name and content are required', 400);
     }
 
+    // Validate type if provided
+    const allowedTypes = [InventoryType.STATIC, InventoryType.DYNAMIC];
+    if (type && !allowedTypes.includes(type)) {
+      throw new AppError('Invalid inventory type', 400);
+    }
+
     await ensureDir(INVENTORY_DIR);
 
     // Generate filename
@@ -208,6 +214,12 @@ router.put('/:id', authMiddleware, userOrAdmin, async (req: AuthenticatedRequest
     }
 
     const { name, description, content, type } = req.body;
+
+    // Validate type if provided
+    const allowedTypes = [InventoryType.STATIC, InventoryType.DYNAMIC];
+    if (type !== undefined && !allowedTypes.includes(type)) {
+      throw new AppError('Invalid inventory type', 400);
+    }
 
     if (name !== undefined) inventory.name = name;
     if (description !== undefined) inventory.description = description;
