@@ -541,10 +541,16 @@ class JobQueueManager {
       execution.completedAt = new Date();
       await executionRepository().save(execution);
 
-      // Update playbook execution count
-      playbook.executionCount = (playbook.executionCount || 0) + 1;
-      playbook.lastExecutedAt = new Date();
-      await playbookRepository().save(playbook);
+      // Update playbook execution count atomically to prevent race conditions
+      await playbookRepository().increment(
+        { id: playbook.id },
+        'executionCount',
+        1
+      );
+      await playbookRepository().update(
+        { id: playbook.id },
+        { lastExecutedAt: new Date() }
+      );
 
       // Update job
       job.status = JobStatus.COMPLETED;
