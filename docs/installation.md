@@ -392,7 +392,7 @@ cd src && uvicorn api:app --host 0.0.0.0 --port 8000 --reload
 
 ```bash
 # Check MCP server health
-curl -s http://localhost:9090/health | jq
+curl -s http://localhost:3000/health | jq
 
 # Expected output:
 {
