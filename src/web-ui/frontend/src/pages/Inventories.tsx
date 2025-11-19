@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { inventoriesApi } from '../lib/api';
 import {
@@ -13,7 +14,6 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
-import { useState } from 'react';
 
 interface Inventory {
   id: string;
@@ -44,6 +44,11 @@ export default function Inventories() {
   });
   const limit = 20;
   const queryClient = useQueryClient();
+
+  // Reset page to 1 when filters change to avoid empty results
+  useEffect(() => {
+    setPage(1);
+  }, [search, typeFilter]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['inventories', typeFilter, search, page],
