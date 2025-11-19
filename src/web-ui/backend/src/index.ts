@@ -63,11 +63,15 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "ws:", "wss:"]
+      connectSrc: ["'self'", "ws:", "wss:"],
+      // Disable upgrade-insecure-requests for HTTP access via IP
+      upgradeInsecureRequests: null
     }
   },
   // Disable HSTS for HTTP development/testing
-  hsts: false
+  hsts: false,
+  // Disable Cross-Origin-Opener-Policy for HTTP
+  crossOriginOpenerPolicy: false
 }));
 
 // CORS configuration
