@@ -14,7 +14,7 @@ COPY tsconfig.json ./
 RUN npm install
 
 # Copy source code
-COPY server/ ./src/
+COPY server/ ./server/
 
 # Build TypeScript
 RUN npm run build
