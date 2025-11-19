@@ -4,7 +4,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { AppDataSource } from '../../database/connection.js';
 import { Inventory, InventoryType } from '../../database/models/Inventory.js';
-import { authMiddleware, optionalAuth, AuthenticatedRequest, userOrAdmin } from '../middleware/auth.js';
+import { authMiddleware, AuthenticatedRequest, userOrAdmin } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -79,7 +79,7 @@ function parseInventoryContent(content: string): { hostCount: number; groupCount
 }
 
 // GET /api/inventories - List inventories
-router.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Response, next) => {
+router.get('/', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { type, search } = req.query;
 
@@ -132,7 +132,7 @@ router.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Response, n
 });
 
 // GET /api/inventories/:id - Get inventory by ID
-router.get('/:id', optionalAuth, async (req: AuthenticatedRequest, res: Response, next) => {
+router.get('/:id', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const inventory = await inventoryRepository().findOne({
       where: { id: req.params.id },
@@ -282,7 +282,7 @@ router.delete('/:id', authMiddleware, userOrAdmin, async (req: AuthenticatedRequ
 });
 
 // POST /api/inventories/:id/test - Test inventory connectivity
-router.post('/:id/test', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
+router.post('/:id/test', authMiddleware, userOrAdmin, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const inventory = await inventoryRepository().findOne({
       where: { id: req.params.id }
@@ -310,7 +310,7 @@ router.post('/:id/test', authMiddleware, async (req: AuthenticatedRequest, res: 
 });
 
 // GET /api/inventories/:id/hosts - Get hosts from inventory
-router.get('/:id/hosts', optionalAuth, async (req: AuthenticatedRequest, res: Response, next) => {
+router.get('/:id/hosts', authMiddleware, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const inventory = await inventoryRepository().findOne({
       where: { id: req.params.id }
