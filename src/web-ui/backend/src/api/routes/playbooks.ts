@@ -272,9 +272,11 @@ router.post('/generate', authMiddleware, userOrAdmin, async (req: AuthenticatedR
       error?: string;
     };
 
-    if (!result.success) {
-      throw new AppError(result.error || 'Generation failed', 500);
+    if (!result.success || !result.playbook) {
+      throw new AppError(result.error || 'Generation failed - no playbook returned', 500);
     }
+
+    const generatedPlaybook = result.playbook;
 
     // Save the generated playbook to database
     await ensureDir(PLAYBOOK_DIR);
@@ -290,7 +292,7 @@ router.post('/generate', authMiddleware, userOrAdmin, async (req: AuthenticatedR
     }
 
     // Write to file
-    await fs.writeFile(filePath, result.playbook, 'utf-8');
+    await fs.writeFile(filePath, generatedPlaybook, 'utf-8');
 
     // Generate name from prompt
     const playbookName = `Generated: ${prompt.substring(0, 50)}${prompt.length > 50 ? '...' : ''}`;
@@ -299,7 +301,7 @@ router.post('/generate', authMiddleware, userOrAdmin, async (req: AuthenticatedR
     const playbook = playbookRepository().create({
       name: playbookName,
       description: `Generated from prompt: ${prompt}`,
-      content: result.playbook,
+      content: generatedPlaybook,
       filePath,
       prompt,
       template: template || null,
