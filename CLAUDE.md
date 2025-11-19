@@ -550,6 +550,153 @@ git pull
 ./scripts/manage.sh update --rebuild --backup
 ```
 
+## Deployment Troubleshooting - Common Issues & Solutions
+
+This section documents deployment issues discovered during testing and their solutions.
+
+### Issue 1: TypeScript Build Path Mismatch
+
+**Symptom:** `error TS18003: No inputs were found in config file`
+
+**Cause:** Dockerfile.mcp copied `server/` to `./src/` but tsconfig.json expects files in `server/**/*.ts`
+
+**Solution:** In `src/Dockerfile.mcp`, change:
+```dockerfile
+# Wrong
+COPY server/ ./src/
+
+# Correct
+COPY server/ ./server/
+```
+
+### Issue 2: MCP Server dist Path
+
+**Symptom:** `Cannot find module '/workspace/dist/server.js'`
+
+**Cause:** TypeScript compiles `server/server.ts` to `dist/server/server.js` (mirrors directory structure)
+
+**Solution:** In `src/Dockerfile.mcp`, change CMD:
+```dockerfile
+# Wrong
+CMD ["node", "dist/server.js"]
+
+# Correct
+CMD ["node", "dist/server/server.js"]
+```
+
+### Issue 3: AI Generator Module Import Error
+
+**Symptom:** `Could not import module "src.api"`
+
+**Cause:** docker-compose.yml mounted `./src:/app/src` which overwrote Dockerfile's setup. The actual file is at `./server/api.py`
+
+**Solution:** In `src/docker-compose.yml` for ai-generator service:
+```yaml
+volumes:
+  # Wrong
+  - ./src:/app/src
+
+  # Correct
+  - ./server:/app/src
+```
+
+### Issue 4: PostgreSQL User Mismatch
+
+**Symptom:** `password authentication failed for user "awx"`
+
+**Cause:** web-ui defaulted to `awx` user while postgres defaulted to `ansible_mcp`
+
+**Solution:** In `src/docker-compose.yml` for web-ui service:
+```yaml
+environment:
+  # Wrong
+  - DB_USER=${POSTGRES_USER:-awx}
+
+  # Correct
+  - DB_USER=${POSTGRES_USER:-ansible_mcp}
+```
+
+**Note:** If postgres volume already exists with old credentials, delete it:
+```bash
+docker volume rm src_postgres-data
+```
+
+### Issue 5: MCP Server Health Check Port
+
+**Symptom:** MCP Server shows "unhealthy" but actually works
+
+**Cause:**
+- Health check used port 3000 but MCP server uses stdio (no HTTP on 3000)
+- The `/health` endpoint is on the metrics server (port 9090)
+
+**Solution:** In `src/docker-compose.yml` for ansible-mcp service:
+```yaml
+healthcheck:
+  # Wrong
+  test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+
+  # Correct
+  test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
+```
+
+Also update `src/Dockerfile.mcp`:
+```dockerfile
+EXPOSE 3000 9090
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:9090/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"
+```
+
+### Issue 6: Vault Dependency Blocking MCP Server
+
+**Symptom:** `dependency failed to start: container ansible-vault is unhealthy`
+
+**Cause:** Vault health check is too strict/slow in dev mode, but Vault actually works
+
+**Workaround:** Manually start MCP server after other services:
+```bash
+docker compose -f src/docker-compose.yml up -d
+docker start ansible-mcp-server
+```
+
+### Issue 7: manage.sh Shows "MCP Server not responding"
+
+**Symptom:** `[WARN] MCP Server (3000) - not responding`
+
+**This is expected behavior!** The MCP protocol uses stdio, not HTTP on port 3000. The actual health endpoint is on port 9090 (metrics server).
+
+To verify MCP Server health:
+```bash
+docker exec ansible-mcp-server wget -qO- http://localhost:9090/health
+```
+
+### Port Architecture Summary
+
+| Service | External Port | Internal Port | Protocol |
+|---------|--------------|---------------|----------|
+| MCP Server | 3000 | 3000 | MCP (stdio) |
+| MCP Health | - | 9090 | HTTP |
+| Prometheus | 9090 | 9090 | HTTP |
+| Web UI | 3001 | 3001 | HTTP |
+| AI Generator | 8000 | 8000 | HTTP |
+
+### Deployment Checklist
+
+After fresh installation, verify:
+```bash
+# All containers running
+docker ps
+
+# Health checks passing
+./scripts/manage.sh health
+
+# MCP Server internal health
+docker exec ansible-mcp-server wget -qO- http://localhost:9090/health
+
+# Web UI accessible
+curl http://localhost:3001/api/health
+```
+
 ## Support & Resources
 
 - Documentation: `docs/` directory
