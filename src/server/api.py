@@ -371,8 +371,10 @@ async def validate_playbook(request: ValidateRequest):
 
             except subprocess.TimeoutExpired:
                 errors.append("Syntax check timed out after 30 seconds")
+                syntax_valid = False
             except FileNotFoundError:
                 errors.append("ansible-playbook command not found")
+                syntax_valid = False
             finally:
                 Path(temp_path).unlink(missing_ok=True)
 
