@@ -39,6 +39,7 @@ function parseInventoryContent(content: string): { hostCount: number; groupCount
   const hosts = new Set<string>();
   const groups = new Set<string>();
   let currentGroup = '';
+  let currentSectionSuffix: string | undefined;
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -53,16 +54,29 @@ function parseInventoryContent(content: string): { hostCount: number; groupCount
     if (groupMatch) {
       const groupExpr = groupMatch[1]; // e.g. "webservers" or "all:children"
       const [groupName, suffix] = groupExpr.split(':', 2);
-      // Skip special sections like :vars, :children
+      currentSectionSuffix = suffix;
+      // Base groups (no suffix) define where hosts live
       if (!suffix) {
         groups.add(groupName);
         currentGroup = groupName;
+      } else {
+        // For sections like :vars or :children, don't treat following lines as hosts
+        currentGroup = '';
       }
       continue;
     }
 
-    // It's a host line
-    if (currentGroup || groups.size === 0) {
+    // When in a :children section, treat lines as child groups, not hosts
+    if (currentSectionSuffix === 'children') {
+      const childGroup = trimmed.split(/\s+/)[0];
+      if (childGroup && !childGroup.includes('=')) {
+        groups.add(childGroup);
+      }
+      continue;
+    }
+
+    // It's a host line (only when not in a suffixed section)
+    if (!currentSectionSuffix && (currentGroup || groups.size === 0)) {
       const hostName = trimmed.split(/\s+/)[0];
       if (hostName && !hostName.includes('=')) {
         hosts.add(hostName);
@@ -324,6 +338,7 @@ router.get('/:id/hosts', authMiddleware, async (req: AuthenticatedRequest, res: 
     const lines = inventory.content.split('\n');
     const hosts: Array<{ name: string; group: string; vars: Record<string, string> }> = [];
     let currentGroup = 'ungrouped';
+    let currentSectionSuffix: string | undefined;
 
     for (const line of lines) {
       const trimmed = line.trim();
@@ -336,9 +351,18 @@ router.get('/:id/hosts', authMiddleware, async (req: AuthenticatedRequest, res: 
       if (groupMatch) {
         const groupExpr = groupMatch[1];
         const [groupName, suffix] = groupExpr.split(':', 2);
+        currentSectionSuffix = suffix;
         if (!suffix) {
           currentGroup = groupName;
+        } else {
+          // Skip hosts in suffixed sections like :vars or :children
+          currentGroup = 'ungrouped';
         }
+        continue;
+      }
+
+      // Skip lines in suffixed sections (like :vars or :children)
+      if (currentSectionSuffix) {
         continue;
       }
 
