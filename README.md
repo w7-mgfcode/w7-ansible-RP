@@ -38,17 +38,17 @@ git clone https://github.com/w7-mgfcode/Mannos-ANSIBLE_MCP-solution.git
 cd Mannos-ANSIBLE_MCP-solution
 
 # 2. Run install script
-chmod +x release-package/scripts/install.sh
-./release-package/scripts/install.sh
+chmod +x scripts/*.sh
+./scripts/manage.sh install standard
 
 # 3. Add your AI API key to .env
 nano .env  # Set OPENAI_API_KEY=sk-your-key
 
 # 4. Restart to apply
-docker compose restart ansible-mcp
+./scripts/manage.sh restart ansible-mcp
 
-# 5. Test
-curl http://localhost:9090/health
+# 5. Verify health
+./scripts/manage.sh health
 ```
 
 ### Generate Your First Playbook
@@ -92,7 +92,10 @@ release-package/
 │   └── inventories/        # Inventory examples
 │
 ├── scripts/                # Automation scripts
-│   └── install.sh          # Automated installer
+│   ├── common.sh           # Shared functions
+│   ├── install.sh          # Fresh installation
+│   ├── update.sh           # Incremental updates
+│   └── manage.sh           # Unified management CLI
 │
 ├── README.md               # This file
 ├── CHANGELOG.md            # Version history
@@ -126,6 +129,35 @@ release-package/
 | `lint_playbook` | Check best practices |
 | `list_prompt_templates` | Browse available templates |
 | `generate_with_template` | Use optimized prompts |
+
+---
+
+## Management CLI
+
+Unified CLI for all deployment operations:
+
+```bash
+# Installation
+./scripts/manage.sh install [minimal|standard|full]
+
+# Incremental updates (only rebuilds changed services)
+./scripts/manage.sh update
+./scripts/manage.sh update --rebuild --backup
+
+# Service control
+./scripts/manage.sh start/stop/restart [services]
+./scripts/manage.sh status
+./scripts/manage.sh logs [service] -f
+
+# Health & debugging
+./scripts/manage.sh health
+./scripts/manage.sh validate
+./scripts/manage.sh shell postgres  # psql shell
+
+# Backup & restore
+./scripts/manage.sh backup [dir]
+./scripts/manage.sh restore <dir>
+```
 
 ---
 

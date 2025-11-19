@@ -199,98 +199,65 @@ drwxr-xr-x  3 user user  4096 Nov 18 12:00 src
 ...
 ```
 
-### Step 4: Configure Environment Variables
+### Step 4: Run Installation Script
+
+The management CLI automates all configuration:
 
 ```bash
-# Copy environment template (if exists) or create new
-cat > .env << 'EOF'
-# ===== REQUIRED CREDENTIALS =====
-# Generate with: openssl rand -base64 32
-JWT_SECRET=your-jwt-secret-here-replace-me
+# Make scripts executable
+chmod +x scripts/*.sh
 
-# ===== DATABASE =====
-POSTGRES_USER=ansible_mcp
-POSTGRES_PASSWORD=changeme-strong-password
-POSTGRES_DB=awx
-WEB_DB_NAME=ansible_mcp
-
-# ===== SECURITY =====
-VAULT_ROOT_TOKEN=changeme-vault-token
-AWX_SECRET_KEY=changeme-awx-secret
-GITLAB_ROOT_PASSWORD=changeme-gitlab-pass
-GRAFANA_ADMIN_PASSWORD=changeme-grafana-pass
-
-# ===== AI PROVIDER (choose one) =====
-AI_PROVIDER=openai
-AI_MODEL=gpt-4
-# OpenAI
-OPENAI_API_KEY=sk-your-openai-key
-# Anthropic
-# ANTHROPIC_API_KEY=your-anthropic-key
-# Google Gemini
-# GEMINI_API_KEY=your-gemini-key
-EOF
-
-# Generate secure JWT secret (IMPORTANT!)
-# Cross-platform approach: works on both macOS and Linux
-JWT_SECRET=$(openssl rand -base64 32)
-sed "s|JWT_SECRET=.*|JWT_SECRET=$JWT_SECRET|" .env > .env.tmp && mv .env.tmp .env
-
-echo "Environment configured. JWT_SECRET generated."
+# Run installation (choose type: minimal, standard, or full)
+./scripts/manage.sh install standard
 ```
 
-**Expected output:**
-```text
-Environment configured. JWT_SECRET generated.
+This automatically:
+- Creates required directories (playbooks, inventory, logs, templates)
+- Generates secure credentials (JWT_SECRET, POSTGRES_PASSWORD, etc.)
+- Creates default inventory file
+- Pulls and builds Docker images
+- Starts all services
+- Waits for health checks
+
+**Installation types:**
+
+| Type | Services | RAM | Command |
+|------|----------|-----|---------|
+| `minimal` | MCP + AI + Redis + Vault + Postgres | ~1GB | `./scripts/manage.sh install minimal` |
+| `standard` | + Web UI + Prometheus + Grafana | ~2GB | `./scripts/manage.sh install standard` |
+| `full` | + GitLab | ~8GB | `./scripts/manage.sh install full` |
+
+### Step 5: Configure AI Provider
+
+```bash
+# Edit .env to add your AI API key
+nano .env
+
+# Find and set one of:
+# OPENAI_API_KEY=sk-your-openai-key
+# ANTHROPIC_API_KEY=your-anthropic-key
+# GEMINI_API_KEY=your-gemini-key
+
+# Restart to apply
+./scripts/manage.sh restart ansible-mcp
 ```
 
 **Warning:**
 - NEVER use default passwords in production
 - NEVER commit .env files to version control
-- JWT_SECRET is REQUIRED - server will not start without it
+- Set proper API key for your chosen AI provider
 
-### Step 5: Create Required Directories
-
-```bash
-# Create data directories
-mkdir -p playbooks inventory logs templates
-
-# Create inventory file
-cat > inventory/hosts << 'EOF'
-[local]
-localhost ansible_connection=local
-
-[webservers]
-# web1.example.com ansible_user=admin
-# web2.example.com ansible_user=admin
-
-[databases]
-# db1.example.com ansible_user=admin
-EOF
-
-# Set permissions
-chmod 600 .env
-chmod 755 playbooks inventory logs
-
-echo "Directories created successfully"
-```
-
-**Expected output:**
-```text
-Directories created successfully
-```
-
-### Step 6: Start All Services
+### Step 6: Verify Installation
 
 ```bash
-# Pull images (may take 5-10 minutes first time)
-docker compose pull
+# Check all services are healthy
+./scripts/manage.sh health
 
-# Start all services in background
-docker compose up -d
+# View service status
+./scripts/manage.sh status
 
-# Watch startup progress
-docker compose logs -f --tail=50
+# View logs if needed
+./scripts/manage.sh logs ansible-mcp -f
 ```
 
 **Expected output during startup:**

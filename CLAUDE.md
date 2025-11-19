@@ -40,7 +40,10 @@ This is NOT a traditional Ansible playbook repository. It's a platform that:
 │   └── playbooks/               # Example playbooks
 │
 ├── scripts/
-│   └── install.sh               # Automated installation
+│   ├── common.sh                # Shared functions for all scripts
+│   ├── install.sh               # Automated installation
+│   ├── update.sh                # Incremental updates
+│   └── manage.sh                # Unified management CLI
 │
 └── src/                         # Source code
     ├── ansible.cfg              # Ansible configuration
@@ -90,6 +93,49 @@ This is NOT a traditional Ansible playbook repository. It's a platform that:
 | `src/web-ui/backend/src/api/routes/` | REST API endpoints | API additions |
 | `src/web-ui/frontend/src/pages/` | React page components | UI changes |
 
+## Management CLI
+
+The unified management CLI (`scripts/manage.sh`) provides all deployment operations:
+
+### Installation & Updates
+```bash
+./scripts/manage.sh install [minimal|standard|full]  # Fresh installation
+./scripts/manage.sh update                           # Incremental update
+./scripts/manage.sh update --rebuild                 # Force rebuild all
+./scripts/manage.sh update --backup                  # Backup before update
+```
+
+### Service Control
+```bash
+./scripts/manage.sh start [services]     # Start services
+./scripts/manage.sh stop [services]      # Stop services
+./scripts/manage.sh restart [services]   # Restart services
+./scripts/manage.sh status               # Show status & resources
+```
+
+### Monitoring & Debugging
+```bash
+./scripts/manage.sh health               # Check all service health
+./scripts/manage.sh logs [service] [-f]  # View logs
+./scripts/manage.sh validate             # Validate configuration
+./scripts/manage.sh shell <service>      # Open shell (psql/redis-cli)
+```
+
+### Backup & Restore
+```bash
+./scripts/manage.sh backup [dir]         # Create backup
+./scripts/manage.sh restore <dir>        # Restore from backup
+./scripts/manage.sh clean                # Remove all data
+```
+
+### Installation Types
+
+| Type | Services | RAM |
+|------|----------|-----|
+| `minimal` | MCP + AI + Redis + Vault + Postgres | ~1GB |
+| `standard` | + Web UI + Prometheus + Grafana | ~2GB |
+| `full` | + GitLab | ~8GB |
+
 ## Development Commands
 
 ### TypeScript Server
@@ -102,7 +148,7 @@ npm run lint       # Run ESLint
 npm run format     # Format with Prettier
 ```
 
-### Docker Operations
+### Direct Docker Operations
 ```bash
 docker compose up -d              # Start all services
 docker compose down               # Stop all services
@@ -122,16 +168,29 @@ python -m mypy src/server/        # Type check
 
 ### Services (docker-compose.yml)
 
-| Service | Port | Purpose |
-|---------|------|---------|
-| `web-ui` | 3001 | React management interface |
-| `ansible-mcp` | 3000 | Main MCP server |
-| `ai-generator` | 8000 | Python AI service |
-| `redis` | 6379 | Cache & job queue |
-| `vault` | 8200 | Secrets management |
-| `postgres` | 5432 | Data persistence |
-| `prometheus` | 9090 | Metrics collection |
-| `grafana` | 3002 | Dashboards |
+| Service | Port | Purpose | Health Check |
+|---------|------|---------|--------------|
+| `web-ui` | 3001 | React management interface | `/api/health` |
+| `ansible-mcp` | 3000 | Main MCP server | `/health` |
+| `ai-generator` | 8000 | Python AI service | `/health` |
+| `redis` | 6379 | Cache & job queue | `redis-cli ping` |
+| `vault` | 8200 | Secrets management | `/v1/sys/health` |
+| `postgres` | 5432 | Data persistence | `pg_isready` |
+| `prometheus` | 9090 | Metrics collection | `/-/healthy` |
+| `grafana` | 3002 | Dashboards | `/api/health` |
+
+### Service Dependencies
+
+All services have proper health check conditions:
+```yaml
+depends_on:
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+```
+
+This eliminates race conditions during startup - services wait for their dependencies to be healthy.
 
 ### AI Provider System
 
@@ -455,13 +514,41 @@ MCP_API_KEY=<api key for MCP auth>
 
 ## Getting Started
 
+### Quick Installation
+```bash
+# 1. Run install script
+chmod +x scripts/install.sh
+./scripts/manage.sh install standard
+
+# 2. Add AI API key
+nano .env  # Set OPENAI_API_KEY=sk-...
+
+# 3. Restart MCP server
+./scripts/manage.sh restart ansible-mcp
+
+# 4. Verify
+./scripts/manage.sh health
+```
+
+### Learning Path
 1. Read `README.md` for overview
 2. Follow `docs/quickstart.md` for setup
 3. Study `docs/architecture.md` for system design
 4. Review `src/server/server.ts` for tool patterns
 5. Check `examples/` for reference implementations
-6. Run `docker compose up -d` to start services
-7. Access Web UI at `http://localhost:3001`
+6. Access Web UI at `http://localhost:3001`
+
+### Updating Existing Installation
+```bash
+# Pull latest changes
+git pull
+
+# Update with incremental rebuild
+./scripts/manage.sh update
+
+# Or force full rebuild
+./scripts/manage.sh update --rebuild --backup
+```
 
 ## Support & Resources
 
