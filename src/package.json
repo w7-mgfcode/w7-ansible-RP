@@ -9,8 +9,8 @@
     "start": "node dist/server.js",
     "dev": "tsx src/server.ts",
     "test": "jest",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint src/**/*.ts",
-    "format": "prettier --write src/**/*.ts"
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint server/**/*.ts",
+    "format": "prettier --write server/**/*.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.22.0",
