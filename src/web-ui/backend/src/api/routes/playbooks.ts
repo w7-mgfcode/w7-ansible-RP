@@ -4,11 +4,15 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { AppDataSource } from '../../database/connection.js';
 import { Playbook, PlaybookStatus } from '../../database/models/Playbook.js';
+import { Execution, ExecutionStatus } from '../../database/models/Execution.js';
 import { authMiddleware, optionalAuth, AuthenticatedRequest, userOrAdmin } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { getWebSocketManager } from '../../index.js';
+import { getJobQueueManager } from '../../services/jobQueueManager.js';
 
 const router = Router();
 const playbookRepository = () => AppDataSource.getRepository(Playbook);
+const executionRepository = () => AppDataSource.getRepository(Execution);
 
 // AI Generator service URL
 const AI_GENERATOR_URL = process.env.AI_GENERATOR_URL || 'http://ai-generator:8000';
@@ -228,88 +232,27 @@ router.delete('/:id', authMiddleware, userOrAdmin, async (req: AuthenticatedRequ
 // POST /api/playbooks/generate - Generate playbook from prompt using AI
 router.post('/generate', authMiddleware, userOrAdmin, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
-    const { prompt, template, context, provider, model } = req.body;
+    const { prompt, template, name, description } = req.body;
 
     if (!prompt) {
       throw new AppError('Prompt is required', 400);
     }
 
-    // Call AI Generator service
-    const generateUrl = `${AI_GENERATOR_URL}/generate`;
-
-    const generateRequest = {
+    // Queue the generation job
+    const jobQueueManager = getJobQueueManager();
+    const job = await jobQueueManager.queueGenerateJob({
       prompt,
-      template: template || undefined,
-      target_hosts: context?.target_hosts || 'all',
-      environment: context?.environment || 'production',
-      tags: context?.tags || [],
-      provider: provider || process.env.AI_PROVIDER || 'gemini',
-      model: model || process.env.AI_MODEL || undefined,
-      use_ai: true
-    };
-
-    // Make HTTP request to AI Generator
-    const response = await fetch(generateUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(generateRequest),
+      template,
+      name,
+      description,
+      userId: req.user!.userId,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new AppError(`AI Generator error: ${errorText}`, response.status);
-    }
-
-    const result = await response.json() as {
-      success: boolean;
-      playbook?: string;
-      playbook_type?: string;
-      error?: string;
-    };
-
-    if (!result.success || !result.playbook) {
-      throw new AppError(result.error || 'Generation failed - no playbook returned', 500);
-    }
-
-    const generatedPlaybook = result.playbook;
-
-    // Save the generated playbook to database
-    await ensureDir(PLAYBOOK_DIR);
-
-    const filename = `playbook_${Date.now()}_${uuidv4().slice(0, 8)}.yml`;
-    const filePath = path.join(PLAYBOOK_DIR, filename);
-
-    // Validate path to prevent path traversal
-    validateFilePath(filePath, PLAYBOOK_DIR);
-
-    // Write to file
-    await fs.writeFile(filePath, generatedPlaybook, 'utf-8');
-
-    // Generate name from prompt
-    const playbookName = `Generated: ${prompt.substring(0, 50)}${prompt.length > 50 ? '...' : ''}`;
-
-    // Create database entry
-    const playbook = playbookRepository().create({
-      name: playbookName,
-      description: `Generated from prompt: ${prompt}`,
-      content: generatedPlaybook,
-      filePath,
-      prompt,
-      template: template || null,
-      tags: context?.tags || [],
-      status: PlaybookStatus.DRAFT,
-      createdById: req.user!.userId
-    });
-
-    await playbookRepository().save(playbook);
-
-    res.json({
+    res.status(202).json({
       success: true,
-      playbook,
-      playbookType: result.playbook_type,
-      message: 'Playbook generated successfully'
+      jobId: job.id,
+      status: job.status,
+      message: 'Generation job queued. Subscribe to WebSocket channel job:' + job.id + ' for updates.'
     });
   } catch (error) {
     next(error);
@@ -327,12 +270,19 @@ router.post('/:id/validate', authMiddleware, async (req: AuthenticatedRequest, r
       throw new AppError('Playbook not found', 404);
     }
 
-    // This will be integrated with MCP server's validate_playbook tool
-    // For now, return a placeholder
-    res.json({
+    // Queue the validation job
+    const jobQueueManager = getJobQueueManager();
+    const job = await jobQueueManager.queueValidateJob({
+      playbookId: playbook.id,
+      userId: req.user!.userId,
+    });
+
+    res.status(202).json({
       success: true,
-      message: 'Validation request received',
-      playbookId: playbook.id
+      jobId: job.id,
+      playbookId: playbook.id,
+      status: job.status,
+      message: 'Validation job queued. Subscribe to WebSocket channel job:' + job.id + ' for updates.'
     });
   } catch (error) {
     next(error);
@@ -350,18 +300,30 @@ router.post('/:id/execute', authMiddleware, userOrAdmin, async (req: Authenticat
       throw new AppError('Playbook not found', 404);
     }
 
-    const { inventory, extraVars, checkMode, tags } = req.body;
+    const { inventory, extraVars, checkMode, tags, skipTags, limit, diffMode, verbosity } = req.body;
 
-    // This will be integrated with MCP server's run_playbook tool
-    res.json({
-      success: true,
-      message: 'Execution request received',
-      executionId: uuidv4(),
+    // Queue the execution job
+    const jobQueueManager = getJobQueueManager();
+    const { job, execution } = await jobQueueManager.queueExecuteJob({
       playbookId: playbook.id,
-      inventory,
+      inventory: inventory || 'localhost,',
       extraVars,
       checkMode,
-      tags
+      tags,
+      skipTags,
+      limit,
+      diffMode,
+      verbosity,
+      userId: req.user!.userId,
+    });
+
+    res.status(202).json({
+      success: true,
+      jobId: job.id,
+      executionId: execution.id,
+      playbookId: playbook.id,
+      status: job.status,
+      message: 'Execution job queued. Subscribe to WebSocket channels job:' + job.id + ' or execution:' + execution.id + ' for updates.'
     });
   } catch (error) {
     next(error);
@@ -379,11 +341,19 @@ router.post('/:id/lint', authMiddleware, async (req: AuthenticatedRequest, res: 
       throw new AppError('Playbook not found', 404);
     }
 
-    // This will be integrated with MCP server's lint_playbook tool
-    res.json({
+    // Queue the lint job
+    const jobQueueManager = getJobQueueManager();
+    const job = await jobQueueManager.queueLintJob({
+      playbookId: playbook.id,
+      userId: req.user!.userId,
+    });
+
+    res.status(202).json({
       success: true,
-      message: 'Lint request received',
-      playbookId: playbook.id
+      jobId: job.id,
+      playbookId: playbook.id,
+      status: job.status,
+      message: 'Lint job queued. Subscribe to WebSocket channel job:' + job.id + ' for updates.'
     });
   } catch (error) {
     next(error);
@@ -407,12 +377,20 @@ router.post('/:id/refine', authMiddleware, userOrAdmin, async (req: Authenticate
       throw new AppError('Feedback is required', 400);
     }
 
-    // This will be integrated with MCP server's refine_playbook tool
-    res.json({
-      success: true,
-      message: 'Refine request received',
+    // Queue the refine job
+    const jobQueueManager = getJobQueueManager();
+    const job = await jobQueueManager.queueRefineJob({
       playbookId: playbook.id,
-      feedback
+      feedback,
+      userId: req.user!.userId,
+    });
+
+    res.status(202).json({
+      success: true,
+      jobId: job.id,
+      playbookId: playbook.id,
+      status: job.status,
+      message: 'Refine job queued. Subscribe to WebSocket channel job:' + job.id + ' for updates.'
     });
   } catch (error) {
     next(error);

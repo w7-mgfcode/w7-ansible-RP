@@ -9,15 +9,13 @@ import {
 } from 'typeorm';
 import { User } from './User.js';
 
-export enum PlaybookStatus {
-  DRAFT = 'draft',
-  VALIDATED = 'validated',
-  INVALID = 'invalid',
-  FAILED = 'failed'
+export enum InventoryType {
+  STATIC = 'static',
+  DYNAMIC = 'dynamic'
 }
 
-@Entity('playbooks')
-export class Playbook {
+@Entity('inventories')
+export class Inventory {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
@@ -30,27 +28,24 @@ export class Playbook {
   @Column('text')
   content!: string;
 
-  @Column({ default: 1 })
-  version!: number;
-
-  @Column({
-    type: 'enum',
-    enum: PlaybookStatus,
-    default: PlaybookStatus.DRAFT
-  })
-  status!: PlaybookStatus;
-
   @Column({ nullable: true })
   filePath!: string;
 
-  @Column({ nullable: true })
-  template!: string;
+  @Column({
+    type: 'enum',
+    enum: InventoryType,
+    default: InventoryType.STATIC
+  })
+  type!: InventoryType;
 
-  @Column({ nullable: true })
-  prompt!: string;
+  @Column({ default: 0 })
+  hostCount!: number;
+
+  @Column({ default: 0 })
+  groupCount!: number;
 
   @Column('simple-array', { nullable: true })
-  tags!: string[];
+  groups!: string[];
 
   @Column({ nullable: true })
   createdById!: string;
@@ -65,20 +60,12 @@ export class Playbook {
   @UpdateDateColumn()
   updatedAt!: Date;
 
-  @Column('jsonb', { nullable: true })
-  validationResults!: {
-    yamlValid: boolean;
-    syntaxValid: boolean;
-    warnings: string[];
-    errors: string[];
-  };
-
-  @Column({ default: 0 })
-  executionCount!: number;
-
   @Column({ nullable: true })
-  lastExecutedAt!: Date;
+  lastTestedAt!: Date;
+
+  @Column({ default: false })
+  lastTestSuccess!: boolean;
 
   @Column('jsonb', { nullable: true })
-  metadata!: Record<string, any>;
+  metadata!: Record<string, unknown>;
 }

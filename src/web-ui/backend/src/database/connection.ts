@@ -6,6 +6,7 @@ import { User } from './models/User.js';
 import { Playbook } from './models/Playbook.js';
 import { Execution } from './models/Execution.js';
 import { Job } from './models/Job.js';
+import { Inventory } from './models/Inventory.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,7 +41,7 @@ export const AppDataSource = new DataSource({
   // CRITICAL: synchronize must be false in production - use migrations instead
   synchronize: isDevelopment,
   logging: isDevelopment,
-  entities: [User, Playbook, Execution, Job],
+  entities: [User, Playbook, Execution, Job, Inventory],
   migrations: [path.join(__dirname, '../migrations/*.js')],
   subscribers: [],
 });
@@ -58,4 +59,4 @@ export async function initializeDatabase(): Promise<void> {
   }
 }
 
-export { User, Playbook, Execution, Job };
+export { User, Playbook, Execution, Job, Inventory };

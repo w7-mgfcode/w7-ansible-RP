@@ -13,6 +13,7 @@ import { fileURLToPath } from 'url';
 import { initializeDatabase } from './database/connection.js';
 import { errorHandler, notFoundHandler } from './api/middleware/errorHandler.js';
 import { WebSocketManager } from './api/websocket/executor.js';
+import { getJobQueueManager } from './services/jobQueueManager.js';
 
 // Import routes
 import authRoutes from './api/routes/auth.js';
@@ -20,6 +21,7 @@ import playbooksRoutes from './api/routes/playbooks.js';
 import executionsRoutes from './api/routes/executions.js';
 import templatesRoutes from './api/routes/templates.js';
 import jobsRoutes from './api/routes/jobs.js';
+import inventoriesRoutes from './api/routes/inventories.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -112,6 +114,7 @@ app.use('/api/playbooks', playbooksRoutes);
 app.use('/api/executions', executionsRoutes);
 app.use('/api/templates', templatesRoutes);
 app.use('/api/jobs', jobsRoutes);
+app.use('/api/inventories', inventoriesRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -178,6 +181,11 @@ async function startServer() {
     wsManager = new WebSocketManager(server);
     logger.info('WebSocket server initialized');
 
+    // Initialize Job Queue Manager
+    const jobQueueManager = getJobQueueManager();
+    await jobQueueManager.initialize();
+    logger.info('Job Queue Manager initialized');
+
     // Start listening
     const port = parseInt(process.env.WEB_PORT || '3001');
     server.listen(port, () => {
@@ -189,6 +197,11 @@ async function startServer() {
     // Graceful shutdown
     const shutdown = async () => {
       logger.info('Shutting down...');
+
+      // Shutdown job queue manager
+      await jobQueueManager.shutdown();
+      logger.info('Job Queue Manager shut down');
+
       server.close(() => {
         logger.info('HTTP server closed');
         process.exit(0);
