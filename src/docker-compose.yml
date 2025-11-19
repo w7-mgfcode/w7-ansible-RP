@@ -23,8 +23,16 @@ services:
     networks:
       - ansible-network
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   # Ansible MCP Server
   ansible-mcp:
@@ -60,8 +68,16 @@ services:
     networks:
       - ansible-network
     depends_on:
-      - redis
-      - vault
+      redis:
+        condition: service_healthy
+      vault:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
 
   # Python AI Generator Service
   ai-generator:
@@ -85,7 +101,14 @@ services:
     networks:
       - ansible-network
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
 
   # Redis for caching and job queue
   redis:
@@ -99,6 +122,12 @@ services:
     command: redis-server --appendonly yes
     networks:
       - ansible-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
 
   # Redis Exporter for Prometheus metrics
   # Required because Redis doesn't expose Prometheus metrics natively
@@ -113,7 +142,8 @@ services:
     networks:
       - ansible-network
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
 
   # HashiCorp Vault for secrets
   # WARNING: Dev mode is for development only. Use proper Vault deployment in production.
@@ -135,6 +165,12 @@ services:
     command: server -dev
     networks:
       - ansible-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8200/v1/sys/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # GitLab for version control (optional - use 'docker compose --profile full up')
   gitlab:
@@ -175,6 +211,12 @@ services:
       - '--storage.tsdb.path=/prometheus'
     networks:
       - ansible-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # Grafana for visualization
   grafana:
@@ -193,7 +235,14 @@ services:
     networks:
       - ansible-network
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # Ansible AWX (optional - use 'docker compose --profile full up')
   # NOTE: AWX Docker images are no longer published to Docker Hub
@@ -262,6 +311,12 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-awx}
     networks:
       - ansible-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ansible_mcp} -d ${POSTGRES_DB:-awx}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 networks:
   ansible-network:
