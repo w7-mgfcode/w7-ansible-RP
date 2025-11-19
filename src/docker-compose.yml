@@ -89,7 +89,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./src:/app/src
+      - ./server:/app/src
       - ./templates:/app/templates
       - ./playbooks:/app/playbooks
     environment:
