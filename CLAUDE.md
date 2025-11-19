@@ -506,9 +506,114 @@ MCP_API_KEY=<api key for MCP auth>
 - [ ] Proper error messages (no stack traces to users)
 - [ ] Metrics recorded for monitoring
 
+## Implementation Status & Milestones
+
+### Completed (v2.0.1 - Nov 2025)
+
+#### AI Generation Integration
+- [x] **Python AI Providers** (`src/server/ai_providers.py`) - Gemini, OpenAI, Anthropic support
+- [x] **AI Generator API** (`src/server/api.py`) - Real AI playbook generation endpoint
+- [x] **Web UI → AI Generator** (`src/web-ui/backend/src/api/routes/playbooks.ts`) - Generate endpoint connected
+- [x] **Environment Configuration** - AI_PROVIDER, AI_MODEL, API keys in docker-compose
+
+#### Deployment Fixes
+- [x] **Helmet CSP** - Fixed HTTP access via IP (upgrade-insecure-requests disabled)
+- [x] **TypeORM Sync** - Database tables creation in development mode
+- [x] **Docker Compose** - Environment variables properly passed to containers
+
+### Incomplete Features (Require Implementation)
+
+#### High Priority - Web UI Backend Integration
+
+| Feature | File | Status | Description |
+|---------|------|--------|-------------|
+| **Validate Playbook** | `playbooks.ts` | ❌ Placeholder | Not connected to AI Generator `/validate` endpoint |
+| **Lint Playbook** | `playbooks.ts` | ❌ Placeholder | Not connected to AI Generator `/lint` endpoint |
+| **Execute Playbook** | `playbooks.ts` | ❌ Placeholder | Not connected to MCP Server or execution engine |
+| **Refine Playbook** | `playbooks.ts` | ❌ Missing | No endpoint for AI-based refinement |
+
+#### Medium Priority - Core Features
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **Inventory Management** | ❌ Not implemented | No inventory CRUD operations in Web UI |
+| **Execution Engine** | ❌ Not connected | Web UI cannot execute playbooks against hosts |
+| **Job Queue** | ❌ Not functional | Redis queue exists but no workers processing jobs |
+| **Execution History** | ⚠️ Partial | Database model exists, no execution recording |
+| **Real-time Logs** | ❌ Missing | No WebSocket/SSE for execution output streaming |
+
+#### Low Priority - Enhancements
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **MCP ↔ Web UI Bridge** | ❌ Not integrated | MCP Server and Web UI are separate systems |
+| **Vault Integration** | ⚠️ Partial | Vault running but not used for secrets |
+| **User Permissions** | ⚠️ Basic | Roles exist but not enforced on endpoints |
+| **Grafana Dashboards** | ⚠️ Basic | Prometheus metrics exist, dashboards need work |
+| **GitLab Integration** | ❌ Not implemented | Full mode includes GitLab but no integration |
+
+### Implementation Roadmap
+
+#### Phase 1: Complete Web UI Backend (Est. 4-6 hours)
+```typescript
+// TODO in src/web-ui/backend/src/api/routes/playbooks.ts
+
+// 1. Validate endpoint
+router.post('/:id/validate', async (req, res) => {
+  const response = await fetch(`${AI_GENERATOR_URL}/validate`, {
+    method: 'POST',
+    body: JSON.stringify({ playbook: playbookContent })
+  });
+  // Update playbook validation status in database
+});
+
+// 2. Lint endpoint
+router.post('/:id/lint', async (req, res) => {
+  const response = await fetch(`${AI_GENERATOR_URL}/lint`, {
+    method: 'POST',
+    body: JSON.stringify({ playbook: playbookContent })
+  });
+});
+
+// 3. Execute endpoint - requires ansible-runner integration
+router.post('/:id/execute', async (req, res) => {
+  // Connect to MCP server or ansible-runner
+  // Stream output via WebSocket
+  // Record execution in database
+});
+```
+
+#### Phase 2: Inventory Management (Est. 2-3 hours)
+- Create inventory CRUD endpoints
+- Add inventory page to frontend
+- Support dynamic inventory from database
+
+#### Phase 3: Execution Engine (Est. 6-8 hours)
+- Implement ansible-runner integration
+- Add WebSocket for real-time output
+- Record executions to database
+- Add execution history page
+
+#### Phase 4: MCP-Web UI Bridge (Est. 4-6 hours)
+- Create bridge service between MCP and Web UI
+- Share playbook storage
+- Unified metrics and logging
+
+### Files Requiring Updates
+
+| File | Required Changes |
+|------|------------------|
+| `src/web-ui/backend/src/api/routes/playbooks.ts` | Add validate, lint, execute, refine endpoints |
+| `src/web-ui/backend/src/api/routes/inventories.ts` | Create inventory CRUD |
+| `src/web-ui/backend/src/api/routes/executions.ts` | Add execution management |
+| `src/server/api.py` | Add validate, lint endpoints to Python AI service |
+| `src/web-ui/frontend/src/pages/Inventories.tsx` | Implement inventory UI |
+| `src/web-ui/frontend/src/pages/Executions.tsx` | Implement execution history UI |
+
 ## Version History
 
-- **v2.0.0** (Nov 2025) - Current: Full MCP compliance, multi-provider AI, Web UI, security features
+- **v2.0.1** (Nov 2025) - AI Generation working via Web UI, deployment fixes
+- **v2.0.0** (Nov 2025) - Full MCP compliance, multi-provider AI, Web UI, security features
 - **v1.0.0** (Oct 2025) - Core MCP server, basic generation and validation
 - **v0.1.0** (Sep 2025) - Initial release, proof of concept
 
