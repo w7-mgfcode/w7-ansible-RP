@@ -367,7 +367,8 @@ create_backup() {
 
 # ===== Service Management Helpers =====
 
-# Define service groups
+# Service group definitions (documentation reference, not used programmatically)
+# These show the logical groupings used in get_services_for_type() below
 CORE_SERVICES="redis vault postgres"
 APP_SERVICES="ansible-mcp ai-generator web-ui"
 MONITORING_SERVICES="prometheus grafana redis-exporter"
