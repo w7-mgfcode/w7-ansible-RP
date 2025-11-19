@@ -82,18 +82,26 @@ mkdir -p "$CACHE_DIR"
 get_source_checksum() {
     local service=$1
     local checksum=""
+    local files=""
 
     case $service in
         ansible-mcp)
-            checksum=$(find "$SRC_DIR/server" -name "*.ts" -type f -exec stat -c '%Y' {} \; 2>/dev/null | sort | md5sum | cut -d' ' -f1)
+            files=$(find "$SRC_DIR/server" -name "*.ts" -type f 2>/dev/null)
             ;;
         ai-generator)
-            checksum=$(find "$SRC_DIR/server" -name "*.py" -type f -exec stat -c '%Y' {} \; 2>/dev/null | sort | md5sum | cut -d' ' -f1)
+            files=$(find "$SRC_DIR/server" -name "*.py" -type f 2>/dev/null)
             ;;
         web-ui)
-            checksum=$(find "$SRC_DIR/web-ui" -name "*.ts" -o -name "*.tsx" -type f -exec stat -c '%Y' {} \; 2>/dev/null | sort | md5sum | cut -d' ' -f1)
+            files=$(find "$SRC_DIR/web-ui" \( -name "*.ts" -o -name "*.tsx" \) -type f 2>/dev/null)
             ;;
     esac
+
+    # Get mtimes using cross-platform helper and compute checksum
+    if [ -n "$files" ]; then
+        checksum=$(echo "$files" | while read -r file; do
+            get_file_mtime "$file"
+        done | sort | md5sum | cut -d' ' -f1)
+    fi
 
     echo "$checksum"
 }

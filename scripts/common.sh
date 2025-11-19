@@ -146,6 +146,17 @@ check_port() {
     fi
 }
 
+# Get file modification time (cross-platform)
+# Returns mtime as seconds since epoch
+get_file_mtime() {
+    local file=$1
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        stat -f '%m' "$file" 2>/dev/null
+    else
+        stat -c '%Y' "$file" 2>/dev/null
+    fi
+}
+
 # Check all critical services health
 check_all_services() {
     local failed=0
