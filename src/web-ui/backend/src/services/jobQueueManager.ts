@@ -648,7 +648,11 @@ Please provide the improved playbook.`;
 
       // Update playbook with refined content
       playbook.content = result.playbook;
-      playbook.version = (playbook.version || 1) + 1;
+      // Normalize version: treat null/undefined as 1, preserve 0 if explicitly set
+      const currentVersion = typeof playbook.version === 'number' && playbook.version > 0
+        ? playbook.version
+        : 1;
+      playbook.version = currentVersion + 1;
       playbook.status = result.validation?.valid ? PlaybookStatus.VALIDATED : PlaybookStatus.DRAFT;
 
       // Save to file
