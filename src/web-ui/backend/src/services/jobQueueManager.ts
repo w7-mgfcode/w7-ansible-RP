@@ -575,8 +575,22 @@ class JobQueueManager {
       }
 
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+
+      // Best-effort to mark execution as failed too
+      try {
+        execution.status = ExecutionStatus.FAILED;
+        execution.error = message;
+        execution.completedAt = new Date();
+        await executionRepository().save(execution);
+      } catch (execError) {
+        logger.error(`Failed to update execution ${executionId} on job error`, {
+          error: execError instanceof Error ? execError.message : execError,
+        });
+      }
+
       job.status = JobStatus.FAILED;
-      job.error = error instanceof Error ? error.message : 'Unknown error';
+      job.error = message;
       job.completedAt = new Date();
       await jobRepository().save(job);
 
