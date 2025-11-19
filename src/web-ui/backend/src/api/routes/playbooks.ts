@@ -265,7 +265,12 @@ router.post('/generate', authMiddleware, userOrAdmin, async (req: AuthenticatedR
       throw new AppError(`AI Generator error: ${errorText}`, response.status);
     }
 
-    const result = await response.json();
+    const result = await response.json() as {
+      success: boolean;
+      playbook?: string;
+      playbook_type?: string;
+      error?: string;
+    };
 
     if (!result.success) {
       throw new AppError(result.error || 'Generation failed', 500);
