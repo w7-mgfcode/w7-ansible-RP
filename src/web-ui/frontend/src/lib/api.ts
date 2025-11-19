@@ -128,6 +128,32 @@ export const jobsApi = {
   queueStats: () => api.get('/jobs/stats/queue'),
 };
 
+// Inventories API
+export const inventoriesApi = {
+  list: (params?: {
+    page?: number;
+    limit?: number;
+    type?: string;
+    search?: string;
+  }) => api.get('/inventories', { params }),
+  get: (id: string) => api.get(`/inventories/${id}`),
+  create: (data: {
+    name: string;
+    description?: string;
+    content: string;
+    type?: string;
+  }) => api.post('/inventories', data),
+  update: (id: string, data: {
+    name?: string;
+    description?: string;
+    content?: string;
+    type?: string;
+  }) => api.put(`/inventories/${id}`, data),
+  delete: (id: string) => api.delete(`/inventories/${id}`),
+  test: (id: string) => api.post(`/inventories/${id}/test`),
+  getHosts: (id: string) => api.get(`/inventories/${id}/hosts`),
+};
+
 // Health API
 export const healthApi = {
   check: () => api.get('/health'),

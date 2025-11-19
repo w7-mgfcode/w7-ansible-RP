@@ -7,6 +7,7 @@ import Playbooks from './pages/Playbooks';
 import Executions from './pages/Executions';
 import Templates from './pages/Templates';
 import Jobs from './pages/Jobs';
+import Inventories from './pages/Inventories';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 
@@ -38,6 +39,7 @@ export default function App() {
                   <Route path="/executions" element={<Executions />} />
                   <Route path="/executions/:id" element={<Executions />} />
                   <Route path="/templates" element={<Templates />} />
+                  <Route path="/inventories" element={<Inventories />} />
                   <Route path="/jobs" element={<Jobs />} />
                   <Route path="/settings" element={<Settings />} />
                 </Routes>

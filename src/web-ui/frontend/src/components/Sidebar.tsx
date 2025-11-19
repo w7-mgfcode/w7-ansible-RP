@@ -4,6 +4,7 @@ import {
   FileCode2,
   Play,
   Files,
+  Server,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -18,6 +19,7 @@ const navigation = [
   { name: 'Playbooks', href: '/playbooks', icon: FileCode2 },
   { name: 'Executions', href: '/executions', icon: Play },
   { name: 'Templates', href: '/templates', icon: Files },
+  { name: 'Inventories', href: '/inventories', icon: Server },
   { name: 'Jobs', href: '/jobs', icon: Activity },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];

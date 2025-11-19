@@ -71,7 +71,8 @@ This is NOT a traditional Ansible playbook repository. It's a platform that:
     │   ├── backend/             # Express.js API Server
     │   │   └── src/
     │   │       ├── api/routes/  # API endpoints
-    │   │       └── database/models/ # TypeORM entities
+    │   │       ├── database/models/ # TypeORM entities
+    │   │       └── services/    # Job Queue Manager (BullMQ)
     │   └── frontend/            # React + Vite UI
     │       └── src/
     │           ├── pages/       # Dashboard, Playbooks, etc.
@@ -91,6 +92,7 @@ This is NOT a traditional Ansible playbook repository. It's a platform that:
 | `src/docker-compose.yml` | Service orchestration | Infrastructure changes |
 | `src/ansible.cfg` | Ansible behavior configuration | Execution tuning |
 | `src/web-ui/backend/src/api/routes/` | REST API endpoints | API additions |
+| `src/web-ui/backend/src/services/jobQueueManager.ts` | BullMQ job queue for async operations | Job processing changes |
 | `src/web-ui/frontend/src/pages/` | React page components | UI changes |
 
 ## Management CLI
@@ -612,6 +614,7 @@ router.post('/:id/execute', async (req, res) => {
 
 ## Version History
 
+- **v2.1.0** (Nov 2025) - Async Job Queue System with BullMQ/Redis for background processing of generate/validate/execute/lint/refine operations
 - **v2.0.1** (Nov 2025) - AI Generation working via Web UI, deployment fixes
 - **v2.0.0** (Nov 2025) - Full MCP compliance, multi-provider AI, Web UI, security features
 - **v1.0.0** (Oct 2025) - Core MCP server, basic generation and validation
