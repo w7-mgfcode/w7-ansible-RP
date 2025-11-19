@@ -6,8 +6,8 @@
 # Source this file: source "$(dirname "$0")/common.sh"
 # ============================================
 
-# Exit on error
-set -e
+# Note: Don't use 'set -e' in sourced scripts as it can cause unexpected exits
+# in parent scripts. Use explicit error handling instead.
 
 # Colors for output
 RED='\033[0;31m'
@@ -223,10 +223,16 @@ validate_env() {
         return 1
     fi
 
-    # Source env file
-    set -a
-    source "$ENV_FILE"
-    set +a
+    # Export only variables defined in the env file
+    while IFS='=' read -r key value; do
+        # Ignore comments and empty lines
+        if [[ -n "$key" && "$key" != \#* ]]; then
+            # Remove leading/trailing whitespace and quotes
+            key=$(echo "$key" | xargs)
+            value=$(echo "$value" | sed 's/^["'"'"']//; s/["'"'"']$//')
+            export "$key"="$value"
+        fi
+    done < "$ENV_FILE"
 
     # Check required variables
     if [ -z "$JWT_SECRET" ]; then
@@ -244,26 +250,17 @@ validate_env() {
 
     # Check API key based on provider
     local provider="${AI_PROVIDER:-openai}"
+    local keyvar=""
     case "$provider" in
-        openai)
-            if [ -z "$OPENAI_API_KEY" ]; then
-                log_warn "OpenAI provider selected but OPENAI_API_KEY not set"
-                ((warnings++))
-            fi
-            ;;
-        anthropic)
-            if [ -z "$ANTHROPIC_API_KEY" ]; then
-                log_warn "Anthropic provider selected but ANTHROPIC_API_KEY not set"
-                ((warnings++))
-            fi
-            ;;
-        gemini)
-            if [ -z "$GEMINI_API_KEY" ]; then
-                log_warn "Gemini provider selected but GEMINI_API_KEY not set"
-                ((warnings++))
-            fi
-            ;;
+        openai) keyvar="OPENAI_API_KEY" ;;
+        anthropic) keyvar="ANTHROPIC_API_KEY" ;;
+        gemini) keyvar="GEMINI_API_KEY" ;;
     esac
+
+    if [ -n "$keyvar" ] && [ -z "${!keyvar}" ]; then
+        log_warn "$provider provider selected but $keyvar not set"
+        ((warnings++))
+    fi
 
     if [ $errors -gt 0 ]; then
         log_error "Configuration validation failed with $errors error(s)"
@@ -334,12 +331,27 @@ create_backup() {
     if is_service_running redis; then
         log_step "Backing up Redis data..."
         docker_compose exec -T redis redis-cli BGSAVE > /dev/null 2>&1
-        sleep 2
-        docker cp ansible-redis:/data/dump.rdb "$backup_dir/redis.rdb" 2>/dev/null
-        if [ $? -eq 0 ]; then
-            log_success "Backed up Redis"
+        # Wait for BGSAVE to complete
+        local max_wait=60
+        local waited=0
+        while [ $waited -lt $max_wait ]; do
+            local bgsave_in_progress=$(docker_compose exec -T redis redis-cli INFO persistence 2>/dev/null | grep -E '^rdb_bgsave_in_progress:' | awk -F: '{print $2}' | tr -d '\r')
+            if [ "$bgsave_in_progress" = "0" ]; then
+                break
+            fi
+            sleep 1
+            ((waited++))
+        done
+        local redis_container=$(get_container_id redis)
+        if [ -n "$redis_container" ]; then
+            docker cp "$redis_container:/data/dump.rdb" "$backup_dir/redis.rdb" 2>/dev/null
+            if [ $? -eq 0 ]; then
+                log_success "Backed up Redis"
+            else
+                log_warn "Redis backup failed"
+            fi
         else
-            log_warn "Redis backup failed"
+            log_warn "Redis container not found"
         fi
     fi
 
