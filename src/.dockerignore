@@ -1,0 +1,56 @@
+# Git
+.git
+.gitignore
+
+# Node modules (will be installed in container)
+node_modules
+**/node_modules
+
+# Build outputs
+dist
+**/dist
+
+# Logs
+logs
+*.log
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+__tests__
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+coverage
+
+# Documentation
+*.md
+!README.md
+
+# Docker files (not needed in build context)
+Dockerfile*
+docker-compose*.yml
+
+# Environment files
+.env*
+!.env.example
+
+# Temporary files
+tmp
+temp
+*.tmp
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache

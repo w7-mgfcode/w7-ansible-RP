@@ -1,0 +1,61 @@
+# Dockerfile.python - AI Generator Service
+FROM python:3.10-slim AS builder
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    make \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# Production stage
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ansible \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Python packages from builder
+COPY --from=builder /root/.local /root/.local
+
+# Copy application code
+COPY server/ ./src/
+
+# Create templates directory (templates are embedded in code)
+RUN mkdir -p ./templates
+
+# Make sure scripts in .local are usable
+ENV PATH=/root/.local/bin:$PATH
+
+# Create necessary directories
+RUN mkdir -p /app/playbooks /app/logs /app/cache
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+# Expose API port
+EXPOSE 8000
+
+# Health check with error handling
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD python -c "import requests; \
+try: \
+    exit(0 if requests.get('http://localhost:8000/health', timeout=2).status_code == 200 else 1); \
+except Exception: \
+    exit(1)"
+
+# Run the FastAPI application
+CMD ["uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8000"]

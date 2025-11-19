@@ -1,0 +1,282 @@
+version: '3.8'
+
+services:
+  # Web Management Interface
+  web-ui:
+    build:
+      context: ./web-ui
+      dockerfile: Dockerfile
+    container_name: ansible-web-ui
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - WEB_PORT=3001
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-awx}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-ansible_mcp_dev}
+      - DB_NAME=${WEB_DB_NAME:-ansible_mcp}
+      - JWT_SECRET=${JWT_SECRET:-dev_jwt_secret_change_in_production}
+      - CORS_ORIGINS=http://localhost:3001,http://localhost:5173
+    networks:
+      - ansible-network
+    depends_on:
+      - postgres
+      - redis
+
+  # Ansible MCP Server
+  ansible-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    container_name: ansible-mcp-server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./playbooks:/workspace/playbooks
+      - ./inventory:/workspace/inventory
+      - ./logs:/workspace/logs
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - NODE_ENV=production
+      - MCP_PORT=3000
+      - ANSIBLE_HOST_KEY_CHECKING=False
+      - ANSIBLE_INVENTORY=/workspace/inventory
+      - LOG_LEVEL=info
+      # AI Provider Configuration
+      - AI_PROVIDER=${AI_PROVIDER:-openai}
+      - AI_MODEL=${AI_MODEL:-gpt-4}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - AI_BASE_URL=${AI_BASE_URL:-}
+      # Redis Configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - ansible-network
+    depends_on:
+      - redis
+      - vault
+
+  # Python AI Generator Service
+  ai-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: ansible-ai-generator
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src
+      - ./templates:/app/templates
+      - ./playbooks:/app/playbooks
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_HOST=redis
+      - VAULT_ADDR=http://vault:8200
+      - API_KEY=${OPENAI_API_KEY:-}
+      - MODEL_NAME=gpt-4
+    networks:
+      - ansible-network
+    depends_on:
+      - redis
+
+  # Redis for caching and job queue
+  redis:
+    image: redis:7-alpine
+    container_name: ansible-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - ansible-network
+
+  # Redis Exporter for Prometheus metrics
+  # Required because Redis doesn't expose Prometheus metrics natively
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: ansible-redis-exporter
+    restart: unless-stopped
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    networks:
+      - ansible-network
+    depends_on:
+      - redis
+
+  # HashiCorp Vault for secrets
+  # WARNING: Dev mode is for development only. Use proper Vault deployment in production.
+  # See: https://developer.hashicorp.com/vault/docs/concepts/dev-server
+  vault:
+    image: hashicorp/vault:latest
+    container_name: ansible-vault
+    restart: unless-stopped
+    ports:
+      - "8200:8200"
+    environment:
+      - VAULT_DEV_ROOT_TOKEN_ID=${VAULT_ROOT_TOKEN:-myroot}
+      - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - vault-data:/vault/data
+      - ./vault/config:/vault/config
+    command: server -dev
+    networks:
+      - ansible-network
+
+  # GitLab for version control (optional - use 'docker compose --profile full up')
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+    container_name: ansible-gitlab
+    restart: unless-stopped
+    hostname: gitlab.local
+    profiles:
+      - full
+    ports:
+      - "8080:80"
+      - "8443:443"
+      - "8022:22"
+    volumes:
+      - gitlab-config:/etc/gitlab
+      - gitlab-logs:/var/log/gitlab
+      - gitlab-data:/var/opt/gitlab
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://gitlab.local'
+        gitlab_rails['gitlab_shell_ssh_port'] = 8022
+        gitlab_rails['initial_root_password'] = '${GITLAB_ROOT_PASSWORD:-ansible-mcp-2024}'
+    networks:
+      - ansible-network
+
+  # Prometheus for monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ansible-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - ansible-network
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ansible-grafana
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-ansible_mcp}
+      - GF_INSTALL_PLUGINS=redis-datasource,redis-app
+    networks:
+      - ansible-network
+    depends_on:
+      - prometheus
+
+  # Ansible AWX (optional - use 'docker compose --profile full up')
+  # NOTE: AWX Docker images are no longer published to Docker Hub
+  # To use AWX, see: https://github.com/ansible/awx-operator
+  # awx-web:
+  #   image: ansible/awx:latest
+  #   container_name: ansible-awx-web
+  #   restart: unless-stopped
+  #   profiles:
+  #     - full
+  #   ports:
+  #     - "8052:8052"
+  #   volumes:
+  #     - awx-projects:/var/lib/awx/projects
+  #   environment:
+  #     SECRET_KEY: ${AWX_SECRET_KEY:?AWX_SECRET_KEY environment variable is required}
+  #     DATABASE_NAME: ${POSTGRES_DB:-awx}
+  #     DATABASE_USER: ${POSTGRES_USER:-awx}
+  #     DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD environment variable is required}
+  #     DATABASE_HOST: postgres
+  #     DATABASE_PORT: 5432
+  #     REDIS_HOST: redis
+  #   networks:
+  #     - ansible-network
+  #   depends_on:
+  #     - postgres
+  #     - redis
+
+  # awx-task:
+  #   image: ansible/awx:latest
+  #   container_name: ansible-awx-task
+  #   restart: unless-stopped
+  #   profiles:
+  #     - full
+  #   command: /usr/bin/launch_awx_task.sh
+  #   volumes:
+  #     - awx-projects:/var/lib/awx/projects
+  #   environment:
+  #     SECRET_KEY: ${AWX_SECRET_KEY:?AWX_SECRET_KEY environment variable is required}
+  #     DATABASE_NAME: ${POSTGRES_DB:-awx}
+  #     DATABASE_USER: ${POSTGRES_USER:-awx}
+  #     DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD environment variable is required}
+  #     DATABASE_HOST: postgres
+  #     DATABASE_PORT: 5432
+  #     REDIS_HOST: redis
+  #   networks:
+  #     - ansible-network
+  #   depends_on:
+  #     - postgres
+  #     - redis
+  #     - awx-web
+
+  # PostgreSQL for AWX and Web UI
+  postgres:
+    image: postgres:15-alpine
+    container_name: ansible-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ansible_mcp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ansible_mcp_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-awx}
+    networks:
+      - ansible-network
+
+networks:
+  ansible-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
+volumes:
+  redis-data:
+  vault-data:
+  gitlab-config:
+  gitlab-logs:
+  gitlab-data:
+  prometheus-data:
+  grafana-data:
+  postgres-data:
+  # awx-projects:  # Disabled - AWX not available

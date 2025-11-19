@@ -1,0 +1,64 @@
+# Core dependencies
+# Note: ansible is installed via apt-get in Dockerfile, use ansible-core for pip
+ansible-core>=2.15.0,<3.0.0
+ansible-lint>=6.17.0,<7.0.0
+pyyaml>=6.0,<7.0.0
+jinja2>=3.1.0,<4.0.0
+
+# AI/ML dependencies
+openai>=1.54.0,<2.0.0
+langchain>=0.3.7,<0.4.0
+langchain-openai>=0.2.9,<0.3.0
+langchain-anthropic>=0.3.0,<0.4.0
+langchain-google-genai>=2.0.0,<3.0.0
+tiktoken>=0.8.0,<1.0.0
+anthropic>=0.39.0,<1.0.0
+google-generativeai>=0.8.3,<1.0.0
+
+# Web framework
+fastapi>=0.104.0,<1.0.0
+uvicorn>=0.24.0,<1.0.0
+pydantic>=2.5.0,<3.0.0
+
+# Database
+redis>=5.0.0,<6.0.0
+sqlalchemy>=2.0.0,<3.0.0
+alembic>=1.12.0,<2.0.0
+# PostgreSQL drivers
+asyncpg>=0.29.0,<0.30.0  # Async driver for FastAPI
+psycopg2-binary>=2.9.0,<3.0.0  # Sync driver for Alembic migrations
+
+# Utilities
+python-dotenv>=1.0.0,<2.0.0
+click>=8.1.0,<9.0.0
+rich>=13.0.0,<14.0.0
+requests>=2.31.0,<3.0.0
+httpx>=0.25.0,<1.0.0
+
+# Testing
+pytest>=7.4.0,<8.0.0
+pytest-cov>=4.1.0,<5.0.0
+pytest-asyncio>=0.21.0,<1.0.0
+pytest-mock>=3.12.0,<4.0.0
+faker>=20.0.0,<21.0.0
+
+# Development tools
+black>=23.0.0,<24.0.0
+flake8>=6.1.0,<7.0.0
+mypy>=1.7.0,<2.0.0
+pre-commit>=3.5.0,<4.0.0
+ipython>=8.17.0,<9.0.0
+
+# Monitoring
+prometheus-client>=0.19.0,<1.0.0
+
+# Security
+cryptography>=41.0.0,<42.0.0
+python-jose[cryptography]>=3.3.0,<4.0.0
+passlib[bcrypt]>=1.7.4,<2.0.0
+
+# Cloud providers (optional) - install separately:
+# pip install -r requirements-cloud.txt
+
+# Kubernetes
+kubernetes>=28.1.0,<29.0.0

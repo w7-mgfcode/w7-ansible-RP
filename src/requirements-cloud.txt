@@ -1,0 +1,11 @@
+# Optional cloud provider dependencies
+# Install with: pip install -r requirements-cloud.txt
+
+# AWS
+boto3>=1.29.0,<2.0.0
+
+# Azure
+azure-mgmt-compute>=30.0.0,<31.0.0
+
+# GCP
+google-cloud-compute>=1.14.0,<2.0.0
