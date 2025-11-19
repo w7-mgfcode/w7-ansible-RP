@@ -7,7 +7,7 @@ import os
 import json
 import logging
 import httpx
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from abc import ABC, abstractmethod
 
 logging.basicConfig(level=logging.INFO)
@@ -15,11 +15,28 @@ logger = logging.getLogger(__name__)
 
 
 class AIProvider(ABC):
-    """Abstract base class for AI providers"""
+    """Abstract base class for AI providers with centralized HTTP handling"""
+
+    base_url: str
+    default_model: str
+
+    def __init__(self, api_key: str, model: Optional[str] = None):
+        self.api_key = api_key
+        self.model = model or self.default_model
 
     @abstractmethod
-    async def generate(self, prompt: str, system_prompt: str = "") -> str:
-        """Generate content from prompt"""
+    def _build_request(self, prompt: str, system_prompt: str) -> Tuple[str, Dict[str, Any], Dict[str, str]]:
+        """
+        Build request for this provider.
+
+        Returns:
+            Tuple of (path, json_body, headers)
+        """
+        pass
+
+    @abstractmethod
+    def _extract_text(self, data: Dict[str, Any]) -> str:
+        """Extract generated text from the provider's JSON response."""
         pass
 
     @abstractmethod
@@ -27,27 +44,48 @@ class AIProvider(ABC):
         """Get provider name"""
         pass
 
+    async def _post(self, path: str, json_body: dict, headers: dict) -> dict:
+        """Centralized HTTP POST with error handling"""
+        url = f"{self.base_url}{path}"
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            try:
+                response = await client.post(url, json=json_body, headers=headers)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                logger.error(
+                    f"{self.get_name()} API error: "
+                    f"{e.response.status_code} - {e.response.text}"
+                )
+                raise
+            except Exception as e:
+                logger.error(f"{self.get_name()} generation failed: {e}")
+                raise
+
+    async def generate(self, prompt: str, system_prompt: str = "") -> str:
+        """Generate content from prompt using centralized HTTP handling"""
+        path, body, headers = self._build_request(prompt, system_prompt)
+        data = await self._post(path, body, headers)
+        return self._extract_text(data)
+
 
 class GeminiProvider(AIProvider):
     """Google Gemini AI Provider"""
 
-    def __init__(self, api_key: str, model: str = "gemini-2.5-flash"):
-        self.api_key = api_key
-        self.model = model
-        self.base_url = "https://generativelanguage.googleapis.com/v1beta"
+    base_url = "https://generativelanguage.googleapis.com/v1beta"
+    default_model = "gemini-2.5-flash"
 
     def get_name(self) -> str:
         return "gemini"
 
-    async def generate(self, prompt: str, system_prompt: str = "") -> str:
-        """Generate content using Gemini API"""
-
+    def _build_request(self, prompt: str, system_prompt: str) -> Tuple[str, Dict[str, Any], Dict[str, str]]:
         # Combine system prompt with user prompt
         full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
 
-        url = f"{self.base_url}/models/{self.model}:generateContent?key={self.api_key}"
+        path = f"/models/{self.model}:generateContent?key={self.api_key}"
+        headers = {"Content-Type": "application/json"}
 
-        payload = {
+        body = {
             "contents": [
                 {
                     "role": "user",
@@ -67,130 +105,117 @@ class GeminiProvider(AIProvider):
             ]
         }
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            try:
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
+        return path, body, headers
 
-                data = response.json()
+    def _extract_text(self, data: Dict[str, Any]) -> str:
+        # Validate response structure
+        if (
+            isinstance(data, dict)
+            and "candidates" in data
+            and isinstance(data["candidates"], list)
+            and len(data["candidates"]) > 0
+            and "content" in data["candidates"][0]
+            and "parts" in data["candidates"][0]["content"]
+            and isinstance(data["candidates"][0]["content"]["parts"], list)
+            and len(data["candidates"][0]["content"]["parts"]) > 0
+            and "text" in data["candidates"][0]["content"]["parts"][0]
+        ):
+            return data["candidates"][0]["content"]["parts"][0]["text"]
 
-                # Extract text from response
-                if "candidates" in data and len(data["candidates"]) > 0:
-                    candidate = data["candidates"][0]
-                    if "content" in candidate and "parts" in candidate["content"]:
-                        parts = candidate["content"]["parts"]
-                        if len(parts) > 0 and "text" in parts[0]:
-                            return parts[0]["text"]
-
-                logger.error(f"Unexpected Gemini response structure: {data}")
-                raise ValueError("Invalid response structure from Gemini API")
-
-            except httpx.HTTPStatusError as e:
-                logger.error(f"Gemini API error: {e.response.status_code} - {e.response.text}")
-                raise
-            except Exception as e:
-                logger.error(f"Gemini generation failed: {str(e)}")
-                raise
+        logger.error(f"Unexpected Gemini response structure: {data}")
+        raise ValueError("Invalid response structure from Gemini API")
 
 
 class OpenAIProvider(AIProvider):
     """OpenAI API Provider"""
 
-    def __init__(self, api_key: str, model: str = "gpt-4"):
-        self.api_key = api_key
-        self.model = model
-        self.base_url = "https://api.openai.com/v1"
+    base_url = "https://api.openai.com/v1"
+    default_model = "gpt-4"
 
     def get_name(self) -> str:
         return "openai"
 
-    async def generate(self, prompt: str, system_prompt: str = "") -> str:
-        """Generate content using OpenAI API"""
-
-        url = f"{self.base_url}/chat/completions"
+    def _build_request(self, prompt: str, system_prompt: str) -> Tuple[str, Dict[str, Any], Dict[str, str]]:
+        path = "/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
 
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        payload = {
+        body = {
             "model": self.model,
             "messages": messages,
             "temperature": 0.7,
             "max_tokens": 4096,
         }
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
+        return path, body, headers
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            try:
-                response = await client.post(url, json=payload, headers=headers)
-                response.raise_for_status()
+    def _extract_text(self, data: Dict[str, Any]) -> str:
+        # Validate response structure
+        if (
+            isinstance(data, dict)
+            and "choices" in data
+            and isinstance(data["choices"], list)
+            and len(data["choices"]) > 0
+            and "message" in data["choices"][0]
+            and "content" in data["choices"][0]["message"]
+        ):
+            return data["choices"][0]["message"]["content"]
 
-                data = response.json()
-                return data["choices"][0]["message"]["content"]
-
-            except httpx.HTTPStatusError as e:
-                logger.error(f"OpenAI API error: {e.response.status_code} - {e.response.text}")
-                raise
-            except Exception as e:
-                logger.error(f"OpenAI generation failed: {str(e)}")
-                raise
+        logger.error(f"OpenAI response missing required keys: {data}")
+        raise ValueError("Invalid response structure from OpenAI API")
 
 
 class AnthropicProvider(AIProvider):
     """Anthropic Claude API Provider"""
 
-    def __init__(self, api_key: str, model: str = "claude-3-sonnet-20240229"):
-        self.api_key = api_key
-        self.model = model
-        self.base_url = "https://api.anthropic.com/v1"
+    base_url = "https://api.anthropic.com/v1"
+    default_model = "claude-3-sonnet-20240229"
 
     def get_name(self) -> str:
         return "anthropic"
 
-    async def generate(self, prompt: str, system_prompt: str = "") -> str:
-        """Generate content using Anthropic API"""
-
-        url = f"{self.base_url}/messages"
-
-        payload = {
-            "model": self.model,
-            "max_tokens": 4096,
-            "messages": [{"role": "user", "content": prompt}]
-        }
-
-        if system_prompt:
-            payload["system"] = system_prompt
-
+    def _build_request(self, prompt: str, system_prompt: str) -> Tuple[str, Dict[str, Any], Dict[str, str]]:
+        path = "/messages"
         headers = {
             "x-api-key": self.api_key,
             "anthropic-version": "2023-06-01",
             "Content-Type": "application/json"
         }
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            try:
-                response = await client.post(url, json=payload, headers=headers)
-                response.raise_for_status()
+        body = {
+            "model": self.model,
+            "max_tokens": 4096,
+            "messages": [{"role": "user", "content": prompt}]
+        }
 
-                data = response.json()
-                return data["content"][0]["text"]
+        if system_prompt:
+            body["system"] = system_prompt
 
-            except httpx.HTTPStatusError as e:
-                logger.error(f"Anthropic API error: {e.response.status_code} - {e.response.text}")
-                raise
-            except Exception as e:
-                logger.error(f"Anthropic generation failed: {str(e)}")
-                raise
+        return path, body, headers
+
+    def _extract_text(self, data: Dict[str, Any]) -> str:
+        # Validate Anthropic response structure
+        if (
+            "content" not in data
+            or not isinstance(data["content"], list)
+            or len(data["content"]) == 0
+            or "text" not in data["content"][0]
+        ):
+            logger.error(f"Unexpected Anthropic response structure: {data}")
+            raise ValueError("Invalid response structure from Anthropic API")
+
+        return data["content"][0]["text"]
 
 
 def create_provider(
-    provider: str = "gemini",
+    provider: Optional[str] = "gemini",
     model: Optional[str] = None,
     api_key: Optional[str] = None
 ) -> AIProvider:
@@ -206,28 +231,29 @@ def create_provider(
         AIProvider instance
     """
 
-    provider = provider.lower()
+    # Handle None provider gracefully
+    provider_name = (provider or "gemini").lower()
 
-    if provider == "gemini":
+    if provider_name == "gemini":
         key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not key:
             raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY environment variable required")
-        return GeminiProvider(key, model or "gemini-2.5-flash")
+        return GeminiProvider(key, model)
 
-    elif provider == "openai":
+    elif provider_name == "openai":
         key = api_key or os.getenv("OPENAI_API_KEY")
         if not key:
             raise ValueError("OPENAI_API_KEY environment variable required")
-        return OpenAIProvider(key, model or "gpt-4")
+        return OpenAIProvider(key, model)
 
-    elif provider == "anthropic":
+    elif provider_name == "anthropic":
         key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not key:
             raise ValueError("ANTHROPIC_API_KEY environment variable required")
-        return AnthropicProvider(key, model or "claude-3-sonnet-20240229")
+        return AnthropicProvider(key, model)
 
     else:
-        raise ValueError(f"Unknown provider: {provider}. Supported: gemini, openai, anthropic")
+        raise ValueError(f"Unknown provider: {provider_name}. Supported: gemini, openai, anthropic")
 
 
 def get_default_provider() -> AIProvider:

@@ -25,6 +25,17 @@ async function ensureDir(dir: string) {
   }
 }
 
+// Validate file path is within allowed directory (prevent path traversal)
+function validateFilePath(filePath: string, baseDir: string): void {
+  const resolvedBaseDir = path.resolve(baseDir);
+  const resolvedFilePath = path.resolve(filePath);
+  const relative = path.relative(resolvedBaseDir, resolvedFilePath);
+
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new AppError('Invalid file path', 400);
+  }
+}
+
 // GET /api/playbooks - List playbooks
 router.get('/', optionalAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
@@ -114,12 +125,8 @@ router.post('/', authMiddleware, userOrAdmin, async (req: AuthenticatedRequest, 
     const filename = `playbook_${Date.now()}_${uuidv4().slice(0, 8)}.yml`;
     const filePath = path.join(PLAYBOOK_DIR, filename);
 
-    // Validate the resolved path is within PLAYBOOK_DIR (prevent path traversal)
-    const resolvedPlaybookDir = path.resolve(PLAYBOOK_DIR);
-    const resolvedFilePath = path.resolve(filePath);
-    if (!resolvedFilePath.startsWith(resolvedPlaybookDir + path.sep)) {
-      throw new AppError('Invalid file path', 400);
-    }
+    // Validate path to prevent path traversal
+    validateFilePath(filePath, PLAYBOOK_DIR);
 
     // Write to file
     await fs.writeFile(filePath, content, 'utf-8');
@@ -173,12 +180,7 @@ router.put('/:id', authMiddleware, userOrAdmin, async (req: AuthenticatedRequest
 
       // Update file
       if (playbook.filePath) {
-        // Re-validate path to prevent path traversal attacks
-        const resolvedPlaybookDir = path.resolve(PLAYBOOK_DIR);
-        const resolvedFilePath = path.resolve(playbook.filePath);
-        if (!resolvedFilePath.startsWith(resolvedPlaybookDir + path.sep)) {
-          throw new AppError('Invalid file path', 400);
-        }
+        validateFilePath(playbook.filePath, PLAYBOOK_DIR);
         await fs.writeFile(playbook.filePath, content, 'utf-8');
       }
     }
@@ -207,12 +209,7 @@ router.delete('/:id', authMiddleware, userOrAdmin, async (req: AuthenticatedRequ
 
     // Delete file if exists
     if (playbook.filePath) {
-      // Re-validate path to prevent path traversal attacks
-      const resolvedPlaybookDir = path.resolve(PLAYBOOK_DIR);
-      const resolvedFilePath = path.resolve(playbook.filePath);
-      if (!resolvedFilePath.startsWith(resolvedPlaybookDir + path.sep)) {
-        throw new AppError('Invalid file path', 400);
-      }
+      validateFilePath(playbook.filePath, PLAYBOOK_DIR);
       try {
         await fs.unlink(playbook.filePath);
       } catch {
@@ -284,12 +281,8 @@ router.post('/generate', authMiddleware, userOrAdmin, async (req: AuthenticatedR
     const filename = `playbook_${Date.now()}_${uuidv4().slice(0, 8)}.yml`;
     const filePath = path.join(PLAYBOOK_DIR, filename);
 
-    // Validate path
-    const resolvedPlaybookDir = path.resolve(PLAYBOOK_DIR);
-    const resolvedFilePath = path.resolve(filePath);
-    if (!resolvedFilePath.startsWith(resolvedPlaybookDir + path.sep)) {
-      throw new AppError('Invalid file path', 400);
-    }
+    // Validate path to prevent path traversal
+    validateFilePath(filePath, PLAYBOOK_DIR);
 
     // Write to file
     await fs.writeFile(filePath, generatedPlaybook, 'utf-8');
